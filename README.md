@@ -1,3 +1,5 @@
+![Zombie Custom Drops](docs/banner.png)
+
 # Zombie Custom Drops
 
 Configurable extra item drops for zombies — Forge 1.20.1.
