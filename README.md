@@ -1,15 +1,38 @@
+<div align="center">
+
 ![Zombie Custom Drops](docs/banner.png)
 
 # Zombie Custom Drops
 
-Configurable extra item drops for zombies — Forge 1.20.1.
+**Configurable extra item drops for zombie-family mobs — item, chance, and stack size per entry.**
 
-The stock mods that make zombies drop loot are fine, but none of them let you
-pick **which items**, **the drop chance**, or **the amount**. This one does.
+[![Minecraft](https://img.shields.io/badge/Minecraft-1.20.1-62b47a?style=flat-square&logo=minecraft)](https://www.minecraft.net)
+[![Forge](https://img.shields.io/badge/Forge-47.4.0%2B-DFA86A?style=flat-square)](https://files.minecraftforge.net)
+[![Java](https://img.shields.io/badge/Java-17-ED8B00?style=flat-square&logo=openjdk&logoColor=white)](https://adoptium.net)
+[![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
+
+</div>
+
+---
+
+Stock "zombies drop more loot" mods give you whatever the author hardcoded.
+**Zombie Custom Drops** hands you the config: pick **which items**, set the
+**drop chance**, choose the **stack range** — per entry, hot-reloaded, works
+with vanilla and modded items alike.
+
+## Features
+
+- **Per-entry drop rules** — `item;chance;min;max`, each entry rolls independently
+- **Whole zombie family** — zombie, husk, drowned, zombie villager, zombified piglin out of the box
+- **Modded items welcome** — any `namespace:item` id, including TaCZ ammo, mod currency, quest items
+- **Entity-type tags** — `#minecraft:undead`, `#forge:zombies`, any tag you want
+- **Player-kill option** — gate drops behind player kills to keep mob farms honest
+- **Hot reload** — `/reload`-free: config changes apply on file save
+- **Zero dependencies** — single jar, Forge only
 
 ## Configuration
 
-Config file: `config/zombie_custom_drops-common.toml` (created on first launch).
+`config/zombie_custom_drops-common.toml` (created on first launch):
 
 ```toml
 [drops]
@@ -38,7 +61,13 @@ requirePlayerKill = false
 debugLog = false
 ```
 
-Changes apply on config reload — no restart needed.
+### Entry format
+
+| Field   | Type        | Example          | Notes                                  |
+|---------|-------------|------------------|----------------------------------------|
+| item    | `mod:item`  | `tacz:ammo`      | Any registered item — modded included  |
+| chance  | `0.0`–`1.0` | `0.08` (8%)      | Rolled independently per kill          |
+| min/max | int         | `4;12`           | Stack range; omit both to default to 1 |
 
 ## Build
 
@@ -47,3 +76,15 @@ gradlew build
 ```
 
 Jar lands in `build/libs/zombie_custom_drops-1.20.1-1.0.0.jar`.
+
+## Requirements
+
+|           |              |
+|-----------|--------------|
+| Minecraft | 1.20.1       |
+| Forge     | 47.4.0+      |
+| Java      | 17           |
+
+## License
+
+MIT — see [LICENSE](LICENSE).

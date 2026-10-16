@@ -11,3 +11,6 @@ out/
 bin/
 mcmodsrepo/
 eclipse/
+
+# local asset-generation tooling (fonts, vanilla texture refs, scripts)
+tools/
