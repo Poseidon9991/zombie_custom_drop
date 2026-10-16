@@ -40,10 +40,16 @@ with vanilla and modded items alike.
 #   chance = 0.0-1.0   (0.15 = 15% chance)
 #   min/max = optional stack-size range, defaults to 1
 extraDrops = [
-    "minecraft:iron_ingot;0.08;1;1",
-    "minecraft:rotten_flesh;0.35;1;2",
+    "minecraft:rotten_flesh;0.35;1;2",    # common junk
     "minecraft:bone;0.20;1;2",
-    "tacz:ammo;0.05;4;12"          # works with modded items too
+    "minecraft:coal;0.15;1;2",
+    "minecraft:carrot;0.10;1;2",
+    "minecraft:potato;0.10;1;2",
+    "minecraft:iron_ingot;0.08;1;1",
+    "minecraft:phantom_membrane;0.05;1;1",# uncommon
+    "minecraft:ender_pearl;0.04;1;1",     # rare
+    "minecraft:blaze_rod;0.03;1;1",       # rarest
+    "tacz:ammo;0.05;4;12"                 # modded items work too
 ]
 
 [filter]

@@ -53,10 +53,16 @@ public final class ZcdConfig {                                              // u
          .push("drops");                                                    // open the [drops] TOML section
 
         EXTRA_DROPS = b.defineListAllowEmpty("extraDrops",                  // key "extraDrops" inside [drops] - empty list allowed
-                List.of(                                                    // default entries shipped with the mod
-                        "minecraft:iron_ingot;0.08;1;1",                    // 8% chance of 1 iron ingot
-                        "minecraft:rotten_flesh;0.35;1;2",                  // 35% chance of 1-2 rotten flesh
-                        "minecraft:bone;0.20;1;2"                           // 20% chance of 1-2 bones
+                List.of(                                                    // default entries shipped with the mod - chances scale with rarity
+                        "minecraft:rotten_flesh;0.35;1;2",                  // junk/common: 35% of 1-2 rotten flesh
+                        "minecraft:bone;0.20;1;2",                          // common: 20% of 1-2 bones
+                        "minecraft:coal;0.15;1;2",                          // common fuel: 15% of 1-2 coal
+                        "minecraft:carrot;0.10;1;2",                        // food drop: 10% of 1-2 carrots
+                        "minecraft:potato;0.10;1;2",                        // food drop: 10% of 1-2 potatoes
+                        "minecraft:iron_ingot;0.08;1;1",                    // useful: 8% of 1 iron ingot
+                        "minecraft:phantom_membrane;0.05;1;1",              // uncommon (elytra repair): 5% of 1
+                        "minecraft:ender_pearl;0.04;1;1",                   // rare (teleport resource): 4% of 1
+                        "minecraft:blaze_rod;0.03;1;1"                      // rarest (nether loot in the overworld): 3% of 1
                 ),
                 o -> o instanceof String);                                  // validator: every element must be a string
 
