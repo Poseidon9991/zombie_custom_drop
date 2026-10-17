@@ -23,10 +23,14 @@ with vanilla and modded items alike.
 ## Features
 
 - **Per-entry drop rules** — `item;chance;min;max`, each entry rolls independently
+- **Per-entity tables** — prefix an entry with a mob id or tag (`drowned=...`) so only that mob drops it
+- **Item NBT support** — attach SNBT to any drop: potions, enchanted gear, named quest items
+- **Looting scaling** — optional `lootingChanceBonus` raises every roll per Looting level on the kill
+- **Per-kill cap** — `maxExtraDropsPerKill` stops a lucky kill from dumping loot
 - **Whole zombie family** — zombie, husk, drowned, zombie villager, zombified piglin out of the box
 - **Modded items welcome** — any `namespace:item` id, including TaCZ ammo, mod currency, quest items
 - **Entity-type tags** — `#minecraft:undead`, `#forge:zombies`, any tag you want
-- **Player-kill option** — gate drops behind player kills to keep mob farms honest
+- **Player-kill option** — gate drops behind player kills to keep mob farms honest (pet kills count too)
 - **Hot reload** — `/reload`-free: config changes apply on file save
 - **Zero dependencies** — single jar, Forge only
 
@@ -36,7 +40,9 @@ with vanilla and modded items alike.
 
 ```toml
 [drops]
-# Each entry rolls independently: "namespace:item;chance;min;max"
+# Each entry rolls independently: "[entity=]item[{nbt}];chance;min;max"
+#   entity = optional mob id or #tag restricting this entry
+#   {nbt}  = optional NBT applied to the dropped stack
 #   chance = 0.0-1.0   (0.15 = 15% chance)
 #   min/max = optional stack-size range, defaults to 1
 extraDrops = [
@@ -49,8 +55,14 @@ extraDrops = [
     "minecraft:phantom_membrane;0.05;1;1",# uncommon
     "minecraft:ender_pearl;0.04;1;1",     # rare
     "minecraft:blaze_rod;0.03;1;1",       # rarest
-    "tacz:ammo;0.05;4;12"                 # modded items work too
+    "minecraft:drowned=minecraft:copper_ingot;0.30;1;3",  # drowned-only drop
+    "#forge:zombies=tacz:ammo;0.05;4;12",                 # modded items work too
+    "minecraft:zombie=minecraft:potion{Potion:\"minecraft:healing\"};0.02"  # NBT drops
 ]
+# Stop adding drops after this many successes per kill (0 = unlimited)
+maxExtraDropsPerKill = 0
+# Extra chance per Looting level on the kill (0.01 = +1% per level)
+lootingChanceBonus = 0.01
 
 [filter]
 # Entities that roll extra drops. Plain ids or #namespace:entity_type_tag.
@@ -61,7 +73,7 @@ entities = [
     "minecraft:zombie_villager",
     "minecraft:zombified_piglin"
 ]
-# true = drops only when a player lands the kill (no farm drops)
+# true = drops only when a player (or their pet) lands the kill
 requirePlayerKill = false
 # true = log each rolled drop to console
 debugLog = false
@@ -69,11 +81,13 @@ debugLog = false
 
 ### Entry format
 
-| Field   | Type        | Example          | Notes                                  |
-|---------|-------------|------------------|----------------------------------------|
-| item    | `mod:item`  | `tacz:ammo`      | Any registered item — modded included  |
-| chance  | `0.0`–`1.0` | `0.08` (8%)      | Rolled independently per kill          |
-| min/max | int         | `4;12`           | Stack range; omit both to default to 1 |
+| Field   | Type          | Example                                        | Notes                                    |
+|---------|---------------|------------------------------------------------|------------------------------------------|
+| entity  | `mod:mob` or `#tag` | `minecraft:drowned=`                       | Optional prefix — entry only fires for that mob |
+| item    | `mod:item`    | `tacz:ammo`                                    | Any registered item — modded included    |
+| {nbt}   | SNBT          | `{Potion:"minecraft:healing"}`                 | Optional — NBT data copied onto the stack |
+| chance  | `0.0`–`1.0`   | `0.08` (8%)                                    | Rolled independently per kill            |
+| min/max | int           | `4;12`                                         | Stack range; omit both to default to 1   |
 
 ## Build
 

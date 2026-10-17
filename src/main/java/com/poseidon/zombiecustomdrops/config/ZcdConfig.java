@@ -4,6 +4,8 @@ import com.poseidon.zombiecustomdrops.ZombieCustomDrops;                    // m
 import net.minecraft.core.registries.BuiltInRegistries;                     // vanilla registry access (ITEM, ENTITY_TYPE lookup)
 import net.minecraft.core.registries.Registries;                            // registry key constants (needed to build TagKeys)
 import net.minecraft.resources.ResourceLocation;                            // "namespace:path" id parser
+import net.minecraft.nbt.CompoundTag;                                        // parsed NBT payload carried by a drop entry
+import net.minecraft.nbt.TagParser;                                          // vanilla SNBT ("{key:value}") text parser
 import net.minecraft.tags.TagKey;                                           // a #tag reference for entity types
 import net.minecraft.world.entity.EntityType;                               // entity types (zombie, husk, ...)
 import net.minecraft.world.item.Item;                                       // item types from the item registry
@@ -42,12 +44,20 @@ public final class ZcdConfig {                                              // u
     /** Log every rolled drop to the console. */
     public static final ForgeConfigSpec.BooleanValue DEBUG_LOG;             // TOML boolean: log each successful roll
 
+    /** Chance bonus added per Looting enchant level on the kill weapon. */
+    public static final ForgeConfigSpec.DoubleValue LOOTING_BONUS;          // TOML double: +chance per Looting level
+
+    /** Hard cap on extra drop stacks per single kill (0 = unlimited). */
+    public static final ForgeConfigSpec.IntValue MAX_DROPS_PER_KILL;        // TOML int: stop rolling after N successes
+
     static {                                                                // static block - defines every config key before register()
         ForgeConfigSpec.Builder b = new ForgeConfigSpec.Builder();          // builder accumulates sections + keys + comments
 
         b.comment("Zombie Custom Drops configuration",                      // header comment written into the TOML file
                 "Each entry in extraDrops rolls independently on every matching kill.",
-                "Format: \"namespace:item;chance;min;max\"",
+                "Format: \"[entity=]item[{snbt}];chance;min;max\"",
+                "  entity : optional mob id or #tag restricting the entry (\"minecraft:drowned=...\", \"#forge:zombies=...\")",
+                "  {snbt} : optional NBT applied to the stack (\"minecraft:potion{Potion:\\\"minecraft:healing\\\"}\")",
                 "  chance : 0.0-1.0 (0.15 = 15% chance)",
                 "  min/max: optional stack-size range, defaults to 1")
          .push("drops");                                                    // open the [drops] TOML section
@@ -62,9 +72,16 @@ public final class ZcdConfig {                                              // u
                         "minecraft:iron_ingot;0.08;1;1",                    // useful: 8% of 1 iron ingot
                         "minecraft:phantom_membrane;0.05;1;1",              // uncommon (elytra repair): 5% of 1
                         "minecraft:ender_pearl;0.04;1;1",                   // rare (teleport resource): 4% of 1
-                        "minecraft:blaze_rod;0.03;1;1"                      // rarest (nether loot in the overworld): 3% of 1
+                        "minecraft:blaze_rod;0.03;1;1",                     // rarest (nether loot in the overworld): 3% of 1
+                        "minecraft:drowned=minecraft:copper_ingot;0.30;1;3" // per-entity example: drowned only, 30% of 1-3 copper
                 ),
                 o -> o instanceof String);                                  // validator: every element must be a string
+
+        MAX_DROPS_PER_KILL = b.comment("Stop adding drops after this many successful rolls per kill (0 = unlimited).")
+                .defineInRange("maxExtraDropsPerKill", 0, 0, 64);           // default 0 keeps the legacy all-or-nothing rolls
+
+        LOOTING_BONUS = b.comment("Chance bonus per Looting enchant level on the kill (0.01 = +1% per level).")
+                .defineInRange("lootingChanceBonus", 0.01D, 0.0D, 1.0D);    // default +1%/level - vanilla rare-drop feel
 
         b.pop();                                                            // close the [drops] section
 
@@ -92,7 +109,16 @@ public final class ZcdConfig {                                              // u
         SPEC = b.build();                                                   // freeze the builder into the immutable spec
     }
 
-    public record DropEntry(Item item, float chance, int min, int max) {}   // one compiled drop rule: resolved item + roll params
+    /** One compiled drop rule: resolved item + optional NBT + optional entity restriction + roll params. */
+    public record DropEntry(Item item, CompoundTag tag,
+                            EntityType<?> onlyEntity, TagKey<EntityType<?>> onlyTag,
+                            float chance, int min, int max) {
+        public boolean appliesTo(EntityType<?> type) {                      // does this rule fire for the mob that died?
+            if (onlyEntity != null) return onlyEntity == type;              // exact mob restriction -> strict type match
+            if (onlyTag != null) return type.is(onlyTag);                   // tag restriction -> membership test
+            return true;                                                    // no restriction -> any target entity rolls it
+        }
+    }
 
     private static volatile List<DropEntry> entries = List.of();            // compiled drop rules - volatile so a reload swap is atomic
     private static volatile Set<EntityType<?>> entitySet = Set.of();        // resolved plain entity ids - volatile for the same reason
@@ -135,27 +161,80 @@ public final class ZcdConfig {                                              // u
                 entries.size(), entitySet.size(), entityTags.size());       // summary line - confirms the reload worked
     }
 
-    private static DropEntry parse(String line) {                           // parse one "item;chance;min;max" string -> DropEntry or null
-        String[] parts = line.trim().split(";");                            // split on semicolons
-        if (parts.length < 2 || parts.length > 4) {                         // need at least item+chance, at most all four fields
+    private static DropEntry parse(String line) {                           // parse one "[entity=]item[{nbt}];chance;min;max" string
+        String trimmed = line.trim();                                       // strip stray whitespace once
+        int firstSep = trimmed.indexOf(';');                                // head = item spec, tail = roll numbers
+        if (firstSep < 0) {                                                 // no chance field at all -> malformed
             LOGGER.warn("[zombie_custom_drops] bad drop entry '{}' (expected item;chance;min;max)", line);
-            return null;                                                    // wrong field count -> skip entry
+            return null;
         }
-        ResourceLocation rl = ResourceLocation.tryParse(parts[0].trim());   // parse the item id
+        String head = trimmed.substring(0, firstSep).trim();                // "[entity=]item[{nbt}]"
+        String tail = trimmed.substring(firstSep + 1);                      // "chance[;min;max]" - NBT lives only in head,
+                                                                          // so ';' inside {..} would still break it;
+                                                                          // keep semicolons out of NBT strings
+        String[] parts = tail.split(";");                                   // numeric fields after the head
+        if (parts.length < 1 || parts.length > 3) {                         // chance + up to min/max
+            LOGGER.warn("[zombie_custom_drops] bad drop entry '{}' (expected item;chance;min;max)", line);
+            return null;
+        }
+
+        EntityType<?> onlyEntity = null;                                    // optional exact-mob restriction
+        TagKey<EntityType<?>> onlyTag = null;                               // optional #tag restriction
+        int eq = head.indexOf('=');                                         // "entity=item..." prefix marker
+        if (eq >= 0) {                                                      // per-entity table syntax present
+            String ent = head.substring(0, eq).trim();                      // left side: id or #tag
+            head = head.substring(eq + 1).trim();                           // right side continues as the item spec
+            if (ent.startsWith("#")) {                                      // "#namespace:tag=..." form
+                ResourceLocation tagRl = ResourceLocation.tryParse(ent.substring(1));  // parse the tag id
+                if (tagRl != null) {
+                    onlyTag = TagKey.create(Registries.ENTITY_TYPE, tagRl);  // resolve to an entity-type TagKey
+                } else {
+                    LOGGER.warn("[zombie_custom_drops] bad entity tag in '{}'", line);  // malformed tag -> skip entry
+                    return null;
+                }
+            } else {
+                ResourceLocation entRl = ResourceLocation.tryParse(ent);    // plain "namespace:mob=..." form
+                onlyEntity = entRl == null ? null
+                        : BuiltInRegistries.ENTITY_TYPE.getOptional(entRl).orElse(null);  // resolve via entity registry
+                if (onlyEntity == null) {
+                    LOGGER.warn("[zombie_custom_drops] unknown entity in '{}'", line);   // unknown mob -> skip entry
+                    return null;
+                }
+            }
+        }
+
+        CompoundTag tag = null;                                             // optional NBT payload for the stack
+        int brace = head.indexOf('{');                                      // "item{snbt}" marker
+        if (brace >= 0) {                                                   // NBT suffix present
+            String snbt = head.substring(brace).trim();                     // everything from '{' is the tag text
+            head = head.substring(0, brace).trim();                         // the bare item id remains
+            if (!snbt.endsWith("}")) {                                      // unclosed NBT -> malformed
+                LOGGER.warn("[zombie_custom_drops] unclosed NBT in '{}'", line);
+                return null;
+            }
+            try {
+                tag = TagParser.parseTag(snbt);                             // vanilla SNBT parser -> CompoundTag
+            } catch (Exception ex) {                                        // any syntax error -> warn + skip
+                LOGGER.warn("[zombie_custom_drops] bad NBT in '{}' ({})", line, ex.getMessage());
+                return null;
+            }
+        }
+
+        ResourceLocation rl = ResourceLocation.tryParse(head);              // parse the item id
         Item item = rl == null ? null : BuiltInRegistries.ITEM.getOptional(rl).orElse(null);  // resolve it (modded items work too)
         if (item == null) {
-            LOGGER.warn("[zombie_custom_drops] unknown item '{}'", parts[0]);  // unresolvable item id -> warn + skip
+            LOGGER.warn("[zombie_custom_drops] unknown item '{}'", head);   // unresolvable item id -> warn + skip
             return null;
         }
         float chance;                                                       // roll probability
         int min = 1, max = 1;                                               // stack range - both default to 1
         try {
-            chance = Float.parseFloat(parts[1].trim());                     // field 2 = chance
-            if (parts.length >= 4) {                                        // 4 fields = item;chance;min;max
-                min = Integer.parseInt(parts[2].trim());                    // field 3 = min
-                max = Integer.parseInt(parts[3].trim());                    // field 4 = max
-            } else if (parts.length == 3) {                                 // 3 fields = item;chance;max (min stays 1)
-                max = Integer.parseInt(parts[2].trim());                    // field 3 = max
+            chance = Float.parseFloat(parts[0].trim());                     // field 2 = chance
+            if (parts.length >= 3) {                                        // 4 fields = item;chance;min;max
+                min = Integer.parseInt(parts[1].trim());                    // field 3 = min
+                max = Integer.parseInt(parts[2].trim());                    // field 4 = max
+            } else if (parts.length == 2) {                                 // 3 fields = item;chance;max (min stays 1)
+                max = Integer.parseInt(parts[1].trim());                    // field 3 = max
             }
         } catch (NumberFormatException ex) {                                // non-numeric field -> warn + skip
             LOGGER.warn("[zombie_custom_drops] bad numbers in '{}'", line);
@@ -164,7 +243,7 @@ public final class ZcdConfig {                                              // u
         chance = Math.max(0f, Math.min(1f, chance));                        // clamp chance into [0, 1] - never trust TOML
         if (min < 1) min = 1;                                               // stacks can't be smaller than 1
         if (max < min) max = min;                                           // an inverted range collapses to min
-        return new DropEntry(item, chance, min, max);                       // the compiled rule
+        return new DropEntry(item, tag, onlyEntity, onlyTag, chance, min, max);  // the compiled rule
     }
 
     public static List<DropEntry> entries() {                               // accessor: the current compiled drop rules
@@ -181,6 +260,14 @@ public final class ZcdConfig {                                              // u
 
     public static boolean debug() {                                         // accessor: is debugLog currently on?
         return DEBUG_LOG.get();
+    }
+
+    public static double lootingBonus() {                                   // accessor: chance bonus per Looting level
+        return LOOTING_BONUS.get();
+    }
+
+    public static int maxDropsPerKill() {                                   // accessor: extra-drop cap per kill (0 = unlimited)
+        return MAX_DROPS_PER_KILL.get();
     }
 
     private ZcdConfig() {}                                                  // private ctor - utility class, no instances
