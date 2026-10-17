@@ -10,6 +10,8 @@ import net.minecraft.world.item.ItemStack;                                  // s
 import net.minecraft.util.RandomSource;                                     // per-entity random source for chance + count rolls
 import net.minecraftforge.event.entity.living.LivingDropsEvent;             // Forge event fired when a living entity dies and drops loot
 import net.minecraftforge.eventbus.api.SubscribeEvent;                      // annotation that marks a method as an event handler
+import java.util.ArrayList;                                                  // winner list while picking capped drops
+import java.util.List;                                                       // list type for the winner pick
 import org.apache.logging.log4j.LogManager;                                 // Log4j logger factory
 import org.apache.logging.log4j.Logger;                                     // logger interface for console output
 
@@ -28,13 +30,20 @@ public final class DropHandler {                                            // u
         RandomSource rng = entity.getRandom();                              // the dead entity's own random source
         double lootingBoost = event.getLootingLevel() * ZcdConfig.lootingBonus();  // +chance per Looting level on the kill
         int cap = ZcdConfig.maxDropsPerKill();                              // per-kill extra-drop cap (0 = unlimited)
-        int dropped = 0;                                                    // successful rolls so far on this kill
+
+        List<ZcdConfig.DropEntry> winners = new ArrayList<>();              // entries that passed their roll this kill
         for (ZcdConfig.DropEntry drop : ZcdConfig.entries()) {              // each configured rule rolls independently
-            if (cap > 0 && dropped >= cap) break;                           // cap reached -> stop rolling this corpse
             if (!drop.appliesTo(entity.getType())) continue;                // per-entity restriction mismatch -> skip entry
             float chance = (float) Math.min(1.0D, drop.chance() + lootingBoost);  // Looting can raise, never above 100%
-            if (rng.nextFloat() >= chance) continue;                        // chance check failed -> this entry doesn't drop this kill
+            if (rng.nextFloat() < chance) winners.add(drop);                // chance passed -> candidate for this kill
+        }
 
+        int picks = cap > 0 ? Math.min(cap, winners.size()) : winners.size();  // how many winners actually drop
+        while (winners.size() > picks) {                                    // too many winners for the cap?
+            winners.remove(rng.nextInt(winners.size()));                    // discard random losers - keeps rare entries fair
+        }
+
+        for (ZcdConfig.DropEntry drop : winners) {                          // spawn every surviving winner
             int count = drop.min();                                         // stack size starts at min
             if (drop.max() > drop.min()) {                                  // a range was configured (max > min)?
                 count += rng.nextInt(drop.max() - drop.min() + 1);          // ...roll a uniform count inside [min, max]
@@ -53,11 +62,10 @@ public final class DropHandler {                                            // u
                     stack                                                   // the rolled (possibly NBT-tagged) stack
             );
             event.getDrops().add(dropEntity);                               // append to Forge's drop list - other mods can still veto it
-            dropped++;                                                      // count the success toward the per-kill cap
 
             if (ZcdConfig.debug()) {                                        // debugLog config on? -> log the roll result
-                LOGGER.info("[zombie_custom_drops] {} dropped {} x{} (chance {})",
-                        entity.getType().toString(), drop.item(), count, chance);
+                LOGGER.info("[zombie_custom_drops] {} dropped {} x{} (winners {})",
+                        entity.getType().toString(), drop.item(), count, winners.size());
             }
         }
     }

@@ -77,8 +77,8 @@ public final class ZcdConfig {                                              // u
                 ),
                 o -> o instanceof String);                                  // validator: every element must be a string
 
-        MAX_DROPS_PER_KILL = b.comment("Stop adding drops after this many successful rolls per kill (0 = unlimited).")
-                .defineInRange("maxExtraDropsPerKill", 0, 0, 64);           // default 0 keeps the legacy all-or-nothing rolls
+        MAX_DROPS_PER_KILL = b.comment("Extra item types per kill are drawn from all successful rolls; this caps how many actually drop (0 = unlimited).")
+                .defineInRange("maxExtraDropsPerKill", 1, 0, 64);           // default 1: vanilla drops + at most one extra item type
 
         LOOTING_BONUS = b.comment("Chance bonus per Looting enchant level on the kill (0.01 = +1% per level).")
                 .defineInRange("lootingChanceBonus", 0.01D, 0.0D, 1.0D);    // default +1%/level - vanilla rare-drop feel
@@ -120,6 +120,15 @@ public final class ZcdConfig {                                              // u
         }
     }
 
+    /** Hardcoded zombie-family scope: the mod is called Zombie Custom Drops - nothing else may roll drops. */
+    private static final Set<EntityType<?>> ZOMBIE_FAMILY = Set.of(         // the only entity types allowed to receive extra drops
+            EntityType.ZOMBIE,                                              // zombie
+            EntityType.HUSK,                                                // husk
+            EntityType.DROWNED,                                             // drowned
+            EntityType.ZOMBIE_VILLAGER,                                     // zombie villager
+            EntityType.ZOMBIFIED_PIGLIN                                     // zombified piglin
+    );
+
     private static volatile List<DropEntry> entries = List.of();            // compiled drop rules - volatile so a reload swap is atomic
     private static volatile Set<EntityType<?>> entitySet = Set.of();        // resolved plain entity ids - volatile for the same reason
     private static volatile List<TagKey<EntityType<?>>> entityTags = List.of();  // resolved #tag filters - volatile likewise
@@ -148,10 +157,12 @@ public final class ZcdConfig {                                              // u
             ResourceLocation rl = ResourceLocation.tryParse(s);             // plain "namespace:path" entity id
             EntityType<?> type = rl == null ? null
                     : BuiltInRegistries.ENTITY_TYPE.getOptional(rl).orElse(null);  // resolve via the entity registry (absent mod ids -> empty)
-            if (type != null) {
-                set.add(type);                                              // known entity -> into the filter set
-            } else {
+            if (type == null) {
                 LOGGER.warn("[zombie_custom_drops] unknown entity '{}'", s);      // unknown/bad id -> warn + skip
+            } else if (!ZOMBIE_FAMILY.contains(type)) {                     // resolved but not a zombie-family mob?
+                LOGGER.warn("[zombie_custom_drops] '{}' is outside the zombie family - ignored", s);  // refuse non-zombie targets
+            } else {
+                set.add(type);                                              // known zombie-family entity -> into the filter set
             }
         }
         entitySet = Set.copyOf(set);                                        // swap in the immutable entity set
@@ -199,6 +210,10 @@ public final class ZcdConfig {                                              // u
                 if (onlyEntity == null) {
                     LOGGER.warn("[zombie_custom_drops] unknown entity in '{}'", line);   // unknown mob -> skip entry
                     return null;
+                }
+                if (!ZOMBIE_FAMILY.contains(onlyEntity)) {                  // prefix names a non-zombie mob?
+                    LOGGER.warn("[zombie_custom_drops] '{}' in '{}' is outside the zombie family - ignored", ent, line);
+                    return null;                                            // dead rule - it could never fire anyway
                 }
             }
         }
@@ -251,6 +266,7 @@ public final class ZcdConfig {                                              // u
     }
 
     public static boolean isTarget(EntityType<?> type) {                    // does this entity type get extra drops?
+        if (!ZOMBIE_FAMILY.contains(type)) return false;                    // hard scope: creepers/skeletons/etc never roll, even via #tags
         if (entitySet.contains(type)) return true;                          // O(1) plain-id hit
         for (TagKey<EntityType<?>> tag : entityTags) {                      // otherwise check each configured tag
             if (type.is(tag)) return true;                                  // entity is a member of the tag -> target

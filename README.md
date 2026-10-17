@@ -26,8 +26,8 @@ with vanilla and modded items alike.
 - **Per-entity tables** — prefix an entry with a mob id or tag (`drowned=...`) so only that mob drops it
 - **Item NBT support** — attach SNBT to any drop: potions, enchanted gear, named quest items
 - **Looting scaling** — optional `lootingChanceBonus` raises every roll per Looting level on the kill
-- **Per-kill cap** — `maxExtraDropsPerKill` stops a lucky kill from dumping loot
-- **Whole zombie family** — zombie, husk, drowned, zombie villager, zombified piglin out of the box
+- **Per-kill cap** — all entries roll; the winners are drawn from a hat, `maxExtraDropsPerKill` (default `1`) decides how many actually drop
+- **Zombie family only** — zombie, husk, drowned, zombie villager, zombified piglin; other mobs in `entities` are refused (even via tags)
 - **Modded items welcome** — any `namespace:item` id, including TaCZ ammo, mod currency, quest items
 - **Entity-type tags** — `#minecraft:undead`, `#forge:zombies`, any tag you want
 - **Player-kill option** — gate drops behind player kills to keep mob farms honest (pet kills count too)
@@ -59,13 +59,14 @@ extraDrops = [
     "#forge:zombies=tacz:ammo;0.05;4;12",                 # modded items work too
     "minecraft:zombie=minecraft:potion{Potion:\"minecraft:healing\"};0.02"  # NBT drops
 ]
-# Stop adding drops after this many successes per kill (0 = unlimited)
-maxExtraDropsPerKill = 0
+# Winners are drawn from all successful rolls; this caps how many drop (0 = unlimited)
+maxExtraDropsPerKill = 1
 # Extra chance per Looting level on the kill (0.01 = +1% per level)
 lootingChanceBonus = 0.01
 
 [filter]
 # Entities that roll extra drops. Plain ids or #namespace:entity_type_tag.
+# Locked to the zombie family — creeper/skeleton/etc. entries are refused.
 entities = [
     "minecraft:zombie",
     "minecraft:husk",
