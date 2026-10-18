@@ -6,10 +6,26 @@ pluginManagement {
             name = 'MinecraftForge'
             url = 'https://maven.minecraftforge.net/'
         }
+        maven {
+            name = 'NeoForged'
+            url = 'https://maven.neoforged.net/releases'
+        }
         maven { url = 'https://maven.parchmentmc.org' }
     }
 }
 
 plugins {
     id 'org.gradle.toolchains.foojay-resolver-convention' version '0.7.0'
+    id 'dev.kikugie.stonecutter' version '0.7.11'   // last line compatible with Gradle 8 + JVM 17 (0.8+ needs Gradle 9, 0.9+ needs JVM 21)
+}
+
+// Stonecutter flat setup: shared src/ in the root, one project node per
+// supported version in versions/<name>/. Project name = MC version, so the
+// //? comment conditions evaluate against the Minecraft version.
+stonecutter {
+    kotlinController = false          // controller file is stonecutter.gradle (Groovy)
+    centralScript = 'build.gradle'    // root build.gradle is the template applied to every node
+    create(rootProject) {
+        versions '1.20.1', '1.21.1'   // 1.20.1 -> Forge build, 1.21.1 -> NeoForge build
+    }
 }

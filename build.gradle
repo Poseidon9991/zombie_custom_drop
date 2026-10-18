@@ -1,9 +1,24 @@
+// Shared build template — Stonecutter evaluates this once per version node
+// (versions/1.20.1 -> Forge, versions/1.21.1 -> NeoForge). Use sc.current.*
+// to branch on the node; gradle.properties in each version dir provides the
+// version-specific values (minecraft_version, loader versions, java_version).
+
 plugins {
-    id 'eclipse'
-    id 'idea'
+    id 'java'
     id 'maven-publish'
-    id 'net.minecraftforge.gradle' version '[6.0,6.2)'
-    id 'org.parchmentmc.librarian.forgegradle' version '1.+'
+    id 'net.minecraftforge.gradle' version '[6.0,6.2)' apply false
+    id 'org.parchmentmc.librarian.forgegradle' version '1.+' apply false
+    id 'net.neoforged.moddev' version '2.0.126' apply false
+}
+
+// Node discriminator: the 1.21.1 node builds on NeoForge, 1.20.1 on Forge.
+def isNeoForge = stonecutter.current.version.toString() >= '1.21'
+
+if (isNeoForge) {
+    apply plugin: 'net.neoforged.moddev'
+} else {
+    apply plugin: 'net.minecraftforge.gradle'
+    apply plugin: 'org.parchmentmc.librarian.forgegradle'
 }
 
 version = mod_version
@@ -13,41 +28,44 @@ base {
     archivesName = mod_id
 }
 
-java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+java.toolchain.languageVersion = JavaLanguageVersion.of((property('java_version') as String).toInteger())
 
 println "Java: ${System.getProperty 'java.version'}, JVM: ${System.getProperty 'java.vm.version'} (${System.getProperty 'java.vendor'}), Arch: ${System.getProperty 'os.arch'}"
 
-minecraft {
-
-    mappings channel: mapping_channel, version: mapping_version
-
-    copyIdeResources = true
-
-    runs {
-        configureEach {
-            workingDirectory project.file('run')
-            property 'forge.logging.markers', 'REGISTRIES'
-            property 'forge.logging.console.level', 'debug'
-
-            mods {
-                "${mod_id}" {
-                    source sourceSets.main
+if (isNeoForge) {
+    neoForge {
+        version = property('neoforge_version')
+        runs {
+            client {}
+            server {}
+        }
+    }
+} else {
+    minecraft {
+        mappings channel: mapping_channel, version: mapping_version
+        copyIdeResources = true
+        runs {
+            configureEach {
+                workingDirectory project.file('run')
+                property 'forge.logging.markers', 'REGISTRIES'
+                property 'forge.logging.console.level', 'debug'
+                mods {
+                    "${mod_id}" {
+                        source sourceSets.main
+                    }
                 }
             }
-        }
-
-        client {
-            property 'forge.enabledGameTestNamespaces', mod_id
-        }
-
-        server {
-            property 'forge.enabledGameTestNamespaces', mod_id
-            args '--nogui'
-        }
-
-        data {
-            workingDirectory project.file('run-data')
-            args '--mod', mod_id, '--all', '--output', file('src/generated/resources/'), '--existing', file('src/main/resources/')
+            client {
+                property 'forge.enabledGameTestNamespaces', mod_id
+            }
+            server {
+                property 'forge.enabledGameTestNamespaces', mod_id
+                args '--nogui'
+            }
+            data {
+                workingDirectory project.file('run-data')
+                args '--mod', mod_id, '--all', '--output', file('src/generated/resources/'), '--existing', file('src/main/resources/')
+            }
         }
     }
 }
@@ -58,23 +76,34 @@ repositories {
     maven {
         url = 'https://maven.parchmentmc.org'
     }
+    maven {
+        url = 'https://maven.neoforged.net/releases'
+    }
 }
 
-dependencies {
-    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+// NeoForge's artifact is wired by the `neoForge { version = ... }` block
+// (MDG manages the compile classpath); only Forge needs an explicit dep.
+if (!isNeoForge) {
+    dependencies {
+        minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+    }
 }
 
 tasks.named('processResources', ProcessResources).configure {
+    // Both manifest files (mods.toml + neoforge.mods.toml) ride in every jar -
+    // each loader only reads its own, so every node's gradle.properties must
+    // provide both key sets for the expansion.
     var replaceProperties = [
             minecraft_version: minecraft_version, minecraft_version_range: minecraft_version_range,
             forge_version: forge_version, forge_version_range: forge_version_range,
+            neoforge_version_range: neoforge_version_range,
             loader_version_range: loader_version_range,
             mod_id: mod_id, mod_name: mod_name, mod_license: mod_license, mod_version: mod_version,
             mod_authors: mod_authors, mod_description: mod_description,
     ]
     inputs.properties replaceProperties
 
-    filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
+    filesMatching(['META-INF/mods.toml', 'META-INF/neoforge.mods.toml', 'pack.mcmeta']) {
         expand replaceProperties + [project: project]
     }
 }
@@ -91,8 +120,9 @@ tasks.named('jar', Jar).configure {
                 'Implementation-Timestamp': new Date().format("yyyy-MM-dd'T'HH:mm:ssZ"),
         ])
     }
-
-    finalizedBy 'reobfJar'
+    if (!isNeoForge) {
+        finalizedBy 'reobfJar'
+    }
 }
 
 publishing {
@@ -103,7 +133,7 @@ publishing {
     }
     repositories {
         maven {
-            url "file://${project.projectDir}/mcmodsrepo"
+            url "file://${rootProject.projectDir}/mcmodsrepo"
         }
     }
 }

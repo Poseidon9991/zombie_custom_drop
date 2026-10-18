@@ -1,0 +1,7 @@
+plugins {
+    id 'dev.kikugie.stonecutter'   // version resolved from settings.gradle's plugins block
+}
+
+// Which node's source state the shared src/ shows in the IDE. Building other
+// nodes does not change this - only this line (or gradlew switch tasks) does.
+stonecutter.active '1.20.1'

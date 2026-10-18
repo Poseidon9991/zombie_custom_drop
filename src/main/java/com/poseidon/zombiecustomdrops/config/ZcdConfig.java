@@ -9,7 +9,6 @@ import net.minecraft.nbt.TagParser;                                          // 
 import net.minecraft.tags.TagKey;                                           // a #tag reference for entity types
 import net.minecraft.world.entity.EntityType;                               // entity types (zombie, husk, ...)
 import net.minecraft.world.item.Item;                                       // item types from the item registry
-import net.minecraftforge.common.ForgeConfigSpec;                           // Forge's TOML config system
 import org.apache.logging.log4j.LogManager;                                 // Log4j logger factory
 import org.apache.logging.log4j.Logger;                                     // logger interface for console output
 
@@ -17,41 +16,54 @@ import java.util.ArrayList;                                                 // m
 import java.util.HashSet;                                                   // mutable set used while resolving entity ids
 import java.util.List;                                                      // list type for drop entries + tags
 import java.util.Set;                                                       // set type for the resolved entity filter
+import java.util.function.Supplier;                                         // ConfigValue implements Supplier on both loaders
 
 public final class ZcdConfig {                                              // utility class - static spec + compiled snapshot, no instances
 
     private static final Logger LOGGER = LogManager.getLogger(ZombieCustomDrops.MODID);   // console logger tagged with the mod id
 
-    public static final ForgeConfigSpec SPEC;                               // the frozen config spec handed to Forge at register()
+    // The config spec class differs per loader but shares an API:
+    // Forge = ForgeConfigSpec, NeoForge = ModConfigSpec. SPEC keeps its real
+    // type via a Stonecutter branch; the value keys are typed Supplier<> -
+    // both ConfigValue implementations satisfy it, so no markers needed there.
+    //? if >=1.21 {
+    /*public static final net.neoforged.neoforge.common.ModConfigSpec SPEC;    // NeoForge: the frozen spec registered on the ModContainer
+    *///?} else {
+    public static final net.minecraftforge.common.ForgeConfigSpec SPEC;      // Forge: the frozen spec handed to registerConfig()
+    //?}
 
     /**
-     * Extra drop rules. Format: "namespace:item;chance;min;max"
+     * Extra drop rules. Format: "[entity=]item[{nbt}];chance;min;max"
      * chance is 0.0-1.0 (0.15 = 15%), min/max are stack counts (both optional,
      * default 1). Examples:
      * "minecraft:iron_ingot;0.1;1;2"
-     * "minecraft:bone;0.5"
+     * "minecraft:drowned=minecraft:copper_ingot;0.3;1;3"
      */
-    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> EXTRA_DROPS;   // raw TOML string list - parsed in rebuild()
+    public static final Supplier<List<? extends String>> EXTRA_DROPS;        // raw TOML string list - parsed in rebuild()
 
     /**
      * Entities that roll extra drops. Plain ids or #namespace:tag form.
      */
-    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> ENTITY_FILTER; // raw TOML string list - ids or #tags
+    public static final Supplier<List<? extends String>> ENTITY_FILTER;      // raw TOML string list - ids or #tags
 
     /** Only roll drops when the killing entity is a player. */
-    public static final ForgeConfigSpec.BooleanValue REQUIRE_PLAYER_KILL;   // TOML boolean: gate drops behind player kills
+    public static final Supplier<Boolean> REQUIRE_PLAYER_KILL;               // TOML boolean: gate drops behind player kills
 
     /** Log every rolled drop to the console. */
-    public static final ForgeConfigSpec.BooleanValue DEBUG_LOG;             // TOML boolean: log each successful roll
+    public static final Supplier<Boolean> DEBUG_LOG;                         // TOML boolean: log each successful roll
 
     /** Chance bonus added per Looting enchant level on the kill weapon. */
-    public static final ForgeConfigSpec.DoubleValue LOOTING_BONUS;          // TOML double: +chance per Looting level
+    public static final Supplier<Double> LOOTING_BONUS;                      // TOML double: +chance per Looting level
 
     /** Hard cap on extra drop stacks per single kill (0 = unlimited). */
-    public static final ForgeConfigSpec.IntValue MAX_DROPS_PER_KILL;        // TOML int: stop rolling after N successes
+    public static final Supplier<Integer> MAX_DROPS_PER_KILL;                // TOML int: stop rolling after N successes
 
     static {                                                                // static block - defines every config key before register()
-        ForgeConfigSpec.Builder b = new ForgeConfigSpec.Builder();          // builder accumulates sections + keys + comments
+        //? if >=1.21 {
+        /*var b = new net.neoforged.neoforge.common.ModConfigSpec.Builder();   // NeoForge spec builder (same fluent API)
+        *///?} else {
+        var b = new net.minecraftforge.common.ForgeConfigSpec.Builder();      // Forge spec builder
+        //?}
 
         b.comment("Zombie Custom Drops configuration",                      // header comment written into the TOML file
                 "Each entry in extraDrops rolls independently on every matching kill.",

@@ -6,9 +6,9 @@
 
 **Configurable extra item drops for zombie-family mobs — item, chance, and stack size per entry.**
 
-[![Minecraft](https://img.shields.io/badge/Minecraft-1.20.1-62b47a?style=flat-square&logo=minecraft)](https://www.minecraft.net)
-[![Forge](https://img.shields.io/badge/Forge-47.4.0%2B-DFA86A?style=flat-square)](https://files.minecraftforge.net)
-[![Java](https://img.shields.io/badge/Java-17-ED8B00?style=flat-square&logo=openjdk&logoColor=white)](https://adoptium.net)
+[![Minecraft](https://img.shields.io/badge/Minecraft-1.20.1%20%7C%201.21.1-62b47a?style=flat-square&logo=minecraft)](https://www.minecraft.net)
+[![Forge](https://img.shields.io/badge/Forge%20%2B%20NeoForge-supported-DFA86A?style=flat-square)](https://files.minecraftforge.net)
+[![Java](https://img.shields.io/badge/Java-17%20%7C%2021-ED8B00?style=flat-square&logo=openjdk&logoColor=white)](https://adoptium.net)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
 
 </div>
@@ -32,7 +32,7 @@ with vanilla and modded items alike.
 - **Entity-type tags** — `#minecraft:undead`, `#forge:zombies`, any tag you want
 - **Player-kill option** — gate drops behind player kills to keep mob farms honest (pet kills count too)
 - **Hot reload** — `/reload`-free: config changes apply on file save
-- **Zero dependencies** — single jar, Forge only
+- **Zero dependencies** — one jar per loader (Forge 1.20.1 + NeoForge 1.21.1)
 
 ## Configuration
 
@@ -92,19 +92,34 @@ debugLog = false
 
 ## Build
 
+Multi-version via [Stonecutter](https://stonecutter.kikugie.dev) — one shared
+source tree, per-loader jars generated through `//?` comment markers:
+
 ```
-gradlew build
+gradlew build            # builds every version node
+gradlew :1.20.1:build    # Forge 1.20.1 only
+gradlew :1.21.1:build    # NeoForge 1.21.1 only
 ```
 
-Jar lands in `build/libs/zombie_custom_drops-1.20.1-1.0.0.jar`.
+Jars land in `versions/<node>/build/libs/`:
+
+| Node       | Jar                                     | Loader   |
+|------------|------------------------------------------|----------|
+| `1.20.1`   | `zombie_custom_drops-1.20.1-1.1.1.jar`   | Forge    |
+| `1.21.1`   | `zombie_custom_drops-1.21.1-1.0.0.jar`   | NeoForge |
+
+`src/` holds the shared code; `versions/<node>/gradle.properties` pins each
+target's Minecraft/loader versions. Loader-specific lines use Stonecutter
+`//? if >=1.21` markers — the generated variant lives under
+`versions/<node>/build/generated/stonecutter/`.
 
 ## Requirements
 
-|           |              |
-|-----------|--------------|
-| Minecraft | 1.20.1       |
-| Forge     | 47.4.0+      |
-| Java      | 17           |
+|           | Forge node   | NeoForge node |
+|-----------|--------------|---------------|
+| Minecraft | 1.20.1       | 1.21.1        |
+| Loader    | Forge 47.4.0+| NeoForge 21.1+|
+| Java      | 17           | 21            |
 
 ## License
 
