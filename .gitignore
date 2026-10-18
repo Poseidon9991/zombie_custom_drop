@@ -12,5 +12,25 @@ bin/
 mcmodsrepo/
 eclipse/
 
+# dev-run leftovers (logs/crashes/heap dumps can land outside run/ too)
+logs/
+*.log
+crash-reports/
+*.hprof
+
+# Stonecutter multi-version state + per-node build dirs
+.stonecutter/
+versions/*/run/
+versions/*/run-data/
+
+# OS junk
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# editor state
+.vscode/
+.fleet/
+
 # local asset-generation tooling (fonts, vanilla texture refs, scripts)
 tools/
